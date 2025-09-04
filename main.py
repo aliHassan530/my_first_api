@@ -190,6 +190,8 @@ def userSearch(name: str):
         raise HTTPException(status_code=404, detail=f"No users found with name containing '{name}'")
     
     return {"total_users": len(users), "users": users}
+
+
     
 
 
