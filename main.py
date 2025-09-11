@@ -1,7 +1,10 @@
+
 # ------------------- IMPORTS -------------------
 from fastapi import FastAPI, HTTPException, Body
 from datetime import datetime
+from pydantic import BaseModel
 from pymongo import MongoClient
+from bson import ObjectId
 import bcrypt  # For password hashing
 
 # ------------------- FASTAPI APP -------------------
@@ -11,7 +14,9 @@ app = FastAPI()
 client = MongoClient("mongodb://localhost:27017/")  # Connect MongoDB
 db = client["attendance_system"]                   # Database
 users_collection = db["users"]                     # Users collection
-attendance_collection = db["attendance"]           # Attendance collection
+attendance_collection = db["attendance"] 
+            # Users collection
+post_collection = db["post"] # Attendance collection
 
 # ------------------- HELPER FUNCTIONS -------------------
 def hash_password(password: str) -> str:
@@ -191,8 +196,63 @@ def userSearch(name: str):
     
     return {"total_users": len(users), "users": users}
 
+@app.get("/users/count")
+def user_count():
+    """
+    📊 Get total number of registered users
+    """
+    count = users_collection.count_documents({})
+    return {"total_users": count}
 
+@app.get("/attendance/count")
+def attendace_count():
+    """
+    📊 Get total number of attendance records
+    """
+    count = attendance_collection.count_documents({})
+    return {"total_attendance_records": count}
+
+# Model
+class PostData(BaseModel):
+    name: str
+    email: str
+    postText: str
+    address: str
+    city: str
+
+# Helper to convert MongoDB document to JSON-serializable dict
+def serialize_doc(doc):
+    doc["_id"] = str(doc["_id"])
+    return doc
+# ya simple us model ko return karta ha jo hum ny banaya ha
+
+@app.post("/post")
+def post(posting: PostData):
+    # Insert the data
+    result = post_collection.insert_one(posting.dict())
     
+    # Find inserted document
+    new_post = post_collection.find_one({"_id": result.inserted_id})
+    
+    # Return the full document
+    return serialize_doc(new_post)
+
+
+@app.get("/post/{name}")
+def postSearch(name: str):
+    """
+    🔍 Search post by name
+    """
+    post = post_collection.find_one({"name": name})
+    
+    if not post:
+        raise HTTPException(status_code=404, detail=f"No post found for '{name}'")
+    
+    return serialize_doc(post)
+
+# serialize_doc(new_post)
+    # return serialize_doc(new_post)
+
 
 
 
