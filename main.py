@@ -8,23 +8,34 @@ from bson import ObjectId
 import os
 from pymongo import MongoClient
 import bcrypt  # For password hashing
-
-# ------------------- FASTAPI APP -------------------
 app = FastAPI()
+# Get MongoDB URI from environment variable, fallback to localhost if not set
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 
-# ------------------- DATABASE SETUP -------------------
-client = MongoClient("mongodb://localhost:27017/")  # Connect MongoDB
-# MONGO_URI = os.getenv("mongodb+srv://alihassan:<ah7163259>@cluster0.yewcqyy.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
-# Get MongoDB URI from environment variable (for Vercel / Atlas)
-# client = os.getenv(
-#     "MONGO_URI",  # Environment variable name
-#     "mongodb://localhost:27017/"  # Default local MongoDB fallback
-# )
-db = client["attendance_system"]                   # Database
-users_collection = db["users"]                     # Users collection
-attendance_collection = db["attendance"] 
-            # Users collection
-post_collection = db["post"] # Attendance collection
+# Connect to MongoDB using the URI
+client = MongoClient(MONGO_URI)
+
+# Select your database and collections
+db = client["attendance_system"]
+users_collection = db["users"]
+attendance_collection = db["attendance"]
+post_collection = db["post"]
+# # ------------------- FASTAPI APP -------------------
+# app = FastAPI()
+
+# # ------------------- DATABASE SETUP -------------------
+# client = MongoClient("mongodb://localhost:27017/")  # Connect MongoDB
+# # MONGO_URI = os.getenv("mongodb+srv://alihassan:<ah7163259>@cluster0.yewcqyy.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+# # Get MongoDB URI from environment variable (for Vercel / Atlas)
+# # client = os.getenv(
+# #     "MONGO_URI",  # Environment variable name
+# #     "mongodb://localhost:27017/"  # Default local MongoDB fallback
+# # )
+# db = client["attendance_system"]                   # Database
+# users_collection = db["users"]                     # Users collection
+# attendance_collection = db["attendance"] 
+#             # Users collection
+# post_collection = db["post"] # Attendance collection
 
 # ------------------- HELPER FUNCTIONS -------------------
 def hash_password(password: str) -> str:
