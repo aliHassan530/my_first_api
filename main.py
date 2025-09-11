@@ -5,6 +5,8 @@ from datetime import datetime
 from pydantic import BaseModel
 from pymongo import MongoClient
 from bson import ObjectId
+import os
+from pymongo import MongoClient
 import bcrypt  # For password hashing
 
 # ------------------- FASTAPI APP -------------------
@@ -12,6 +14,12 @@ app = FastAPI()
 
 # ------------------- DATABASE SETUP -------------------
 client = MongoClient("mongodb://localhost:27017/")  # Connect MongoDB
+# MONGO_URI = os.getenv("mongodb+srv://alihassan:<ah7163259>@cluster0.yewcqyy.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+# Get MongoDB URI from environment variable (for Vercel / Atlas)
+# client = os.getenv(
+#     "MONGO_URI",  # Environment variable name
+#     "mongodb://localhost:27017/"  # Default local MongoDB fallback
+# )
 db = client["attendance_system"]                   # Database
 users_collection = db["users"]                     # Users collection
 attendance_collection = db["attendance"] 
