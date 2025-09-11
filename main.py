@@ -7,9 +7,9 @@ from pymongo import MongoClient
 from bson import ObjectId
 import os
 from pymongo import MongoClient
-import bcrypt  # For password hashing
+import bcrypt  # For password hashi
 app = FastAPI()
-# Get MongoDB URI from environment variable, fallback to localhost if not set
+# Get MongoDB URI from environment , fallback to localhost if not set
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 # Connect to MongoDB using the URIs
 client = MongoClient(MONGO_URI)
