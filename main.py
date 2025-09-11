@@ -53,6 +53,14 @@ def home():
     """
     return {"message": "Welcome to the Attendance API! 🚀"}
 
+
+@app.get("/testingDone")
+def Test():
+    """
+    🌐 Root endpoint to confirm API is running
+    """
+    return {"message": "Testing Done! 🚀"}
+
 # ------------------- SIGNUP API -------------------
 
 
