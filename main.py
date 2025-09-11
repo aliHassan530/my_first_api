@@ -11,7 +11,7 @@ import bcrypt  # For password hashing
 app = FastAPI()
 # Get MongoDB URI from environment variable, fallback to localhost if not set
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-# Connect to MongoDB using the URI
+# Connect to MongoDB using the URIs
 client = MongoClient(MONGO_URI)
 
 # Select your database and collections
