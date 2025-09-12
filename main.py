@@ -1,24 +1,23 @@
-
-# ------------------- IMPORTS -------------------
 from fastapi import FastAPI, HTTPException, Body
 from datetime import datetime
 from pydantic import BaseModel
 from pymongo import MongoClient
-from bson import ObjectId
+import bcrypt
+import certifi
 import os
-from pymongo import MongoClient
-import bcrypt  # For password hashi
-app = FastAPI()
-# Get MongoDB URI from  , fallback to localst if not set
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
-# Connect to MongoDB using the URIs
-client = MongoClient(MONGO_URI)
 
-# Select your database and collections
+app = FastAPI()
+
+# MongoDB connection
+MONGO_URI = os.getenv("MONGO_URI", 'mongodb+srv://alihassan:ah7163259@cluster0.yewcqyy.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0')
+client = MongoClient(MONGO_URI, tlsCAFile=certifi.where())
+
+# Select database and collections
 db = client["attendance_system"]
 users_collection = db["users"]
 attendance_collection = db["attendance"]
 post_collection = db["post"]
+
 # # ------------------- FASTAPI APP -------------------
 # app = FastAPI()
 
