@@ -18,7 +18,7 @@ MONGO_URI = os.getenv("MONGO_URI")
 if not MONGO_URI:
     raise ValueError("MONGO_URI environment variable not set")
 try:
-    client = MongoClient(MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=30000)
+    client = MongoClient(MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=60000)
     client.admin.command("ping")  # Test connection
     print("Connected to MongoDB successfully!")
 except Exception as e:
@@ -137,12 +137,19 @@ def update_user_name(email: str, name: str):
 
 # Filter user name API
 @app.get("/users/filter/{name}")
-def user_search(name: str):
-    """Search users by name (case-insensitive)"""
-    users = list(users_collection.find({"name": {"$regex": name, "$options": "i"}}, {"_id": 0, "password": 0}))
-    if not users:
-        raise HTTPException(status_code=404, detail=f"No users found with name containing '{name}'")
-    return {"total_users": len(users), "users": users}
+def userSearch(name: str):
+    """
+    🔍 Search users by name (case-insensitive)
+    """
+    try:
+        users = list(users_collection.find({"name": {"$regex": name, "$options": "i"}}, {"_id": 0, "password": 0}))
+        
+        if not users:
+            raise HTTPException(status_code=404, detail=f"No users found with name containing '{name}'")
+        
+        return {"total_users": len(users), "users": users}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
 # User count API
 @app.get("/users/count")
