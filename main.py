@@ -1,12 +1,12 @@
 from fastapi import FastAPI, HTTPException, Body
+from datetime import datetime, timedelta
 from pydantic import BaseModel
 from pymongo import MongoClient
 import bcrypt
 import certifi
 import os
-from dotenv import load_dotenv
 import jwt
-from datetime import datetime, timedelta
+from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
@@ -51,9 +51,11 @@ def test():
     return {"message": "Testing Done! 🚀"}
 
 
-
-
-
+# 
+# import jwt
+# from datetime import datetime, timedelta
+# from fastapi import Body, HTTPException
+# ... other imports (e.g., from your BaseModel, app, users_collection, etc.)
 
 # Assuming you have a JWT secret (set this in your config or env)
 JWT_SECRET = "your-secret-key"  # Replace with a secure secret
@@ -143,6 +145,9 @@ def login(email: str = Body(...), password: str = Body(...)):
         address=user.get("address", ""),  # Default empty if not present
         city=user.get("city", "")  # Default empty if not present
     )
+
+
+
 
 
 # # Signup API
