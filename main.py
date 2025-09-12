@@ -17,7 +17,12 @@ app = FastAPI()
 MONGO_URI = os.getenv("MONGO_URI")
 if not MONGO_URI:
     raise ValueError("MONGO_URI environment variable not set")
-client = MongoClient(MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=30000)
+try:
+    client = MongoClient(MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=30000)
+    client.admin.command("ping")  # Test connection
+    print("Connected to MongoDB successfully!")
+except Exception as e:
+    raise ValueError(f"Failed to connect to MongoDB: {str(e)}")
 
 # Select database and collections
 db = client["attendance_system"]
@@ -38,7 +43,7 @@ def verify_password(password: str, hashed: str) -> bool:
 @app.get("/")
 def home():
     """Root endpoint to confirm API is running"""
-    return {"message": "Welcome to the Attendance API! 🚀"}
+    return {"message": f"Welcome to the Attendance API! 🚀 ${MONGO_URI}"}
 
 @app.get("/testingDone")
 def test():
@@ -49,18 +54,21 @@ def test():
 @app.post("/signup")
 def signup(name: str = Body(...), email: str = Body(...), password: str = Body(...)):
     """Register a new user with hashed password"""
-    if users_collection.find_one({"email": email}):
-        raise HTTPException(status_code=400, detail="User already exists")
-    
-    hashed_password = hash_password(password)
-    new_user = {"name": name, "email": email, "password": hashed_password}
-    users_collection.insert_one(new_user)
-    
-    return {
-        "status": "success",
-        "message": "User registered successfully!",
-        "user": {"name": name, "email": email}
-    }
+    try:
+        if users_collection.find_one({"email": email}):
+            raise HTTPException(status_code=400, detail="User already exists")
+        
+        hashed_password = hash_password(password)
+        new_user = {"name": name, "email": email, "password": hashed_password}
+        users_collection.insert_one(new_user)
+        
+        return {
+            "status": "success",
+            "message": "User registered successfully!",
+            "user": {"name": name, "email": email}
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Signup error: {str(e)}")
 
 # Login API
 @app.post("/login")
