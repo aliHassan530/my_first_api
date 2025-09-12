@@ -1,5 +1,7 @@
 fastapi==0.115.2
+uvicorn==0.31.1
 pymongo==4.10.1
 bcrypt==4.2.0
 python-dotenv==1.0.1
 certifi==2024.8.30
+mangum==0.17.0
