@@ -1,11 +1,12 @@
 from fastapi import FastAPI, HTTPException, Body
-from datetime import datetime
 from pydantic import BaseModel
 from pymongo import MongoClient
 import bcrypt
 import certifi
 import os
 from dotenv import load_dotenv
+import jwt
+from datetime import datetime, timedelta
 
 # Load environment variables
 load_dotenv()
@@ -49,23 +50,72 @@ def test():
     """Test endpoint to confirm API is running"""
     return {"message": "Testing Done! 🚀"}
 
+
+
+
+
+
+# Assuming you have a JWT secret (set this in your config or env)
+JWT_SECRET = "your-secret-key"  # Replace with a secure secret
+JWT_ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30  # Customize expiration
+
+class UserModel(BaseModel):
+    token: str
+    name: str
+    email: str
+    address: str
+    city: str
+
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
+    """Helper to generate JWT token"""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return encoded_jwt
+
 # Signup API
 @app.post("/signup")
-def signup(name: str = Body(...), email: str = Body(...), password: str = Body(...)):
+def signup(
+    name: str = Body(...),
+    email: str = Body(...),
+    password: str = Body(...),
+    address: str = Body(...),
+    city: str = Body(...)
+):
     """Register a new user with hashed password"""
     try:
         if users_collection.find_one({"email": email}):
             raise HTTPException(status_code=400, detail="User already exists")
         
         hashed_password = hash_password(password)
-        new_user = {"name": name, "email": email, "password": hashed_password}
+        new_user = {
+            "name": name,
+            "email": email,
+            "password": hashed_password,
+            "address": address,
+            "city": city
+        }
         users_collection.insert_one(new_user)
         
-        return {
-            "status": "success",
-            "message": "User registered successfully!",
-            "user": {"name": name, "email": email}
-        }
+        # Generate token
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": email}, expires_delta=access_token_expires
+        )
+        
+        # Return as UserModel
+        return UserModel(
+            token=access_token,
+            name=name,
+            email=email,
+            address=address,
+            city=city
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Signup error: {str(e)}")
 
@@ -78,7 +128,69 @@ def login(email: str = Body(...), password: str = Body(...)):
         raise HTTPException(status_code=404, detail="User not found")
     if not verify_password(password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid password")
-    return {"message": f"Welcome {user['name']}! Login successful."}
+    
+    # Generate token
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": email}, expires_delta=access_token_expires
+    )
+    
+    # Return as UserModel
+    return UserModel(
+        token=access_token,
+        name=user["name"],
+        email=user["email"],
+        address=user.get("address", ""),  # Default empty if not present
+        city=user.get("city", "")  # Default empty if not present
+    )
+
+
+# # Signup API
+# @app.post("/signup")
+# def signup(name: str = Body(...), email: str = Body(...), password: str = Body(...)):
+#     """Register a new user with hashed password"""
+#     try:
+#         if users_collection.find_one({"email": email}):
+#             raise HTTPException(status_code=400, detail="User already exists")
+        
+#         hashed_password = hash_password(password)
+#         new_user = {"name": name, "email": email, "password": hashed_password}
+#         users_collection.insert_one(new_user)
+        
+#         return {
+#             "status": "success",
+#             "message": "User registered successfully!",
+#             "user": {"name": name, "email": email}
+#         }
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Signup error: {str(e)}")
+
+# # Login API
+
+# class UserModel(BaseModel):
+#     token: str
+#     name: str
+#     email: str
+#     address: str
+#     city: str
+# @app.post("/login")
+# def login(email: str = Body(...), password: str = Body(...)):
+#     """Login user by verifying email and password"""
+#     user = users_collection.find_one({"email": email})
+#     if not user:
+#         raise HTTPException(status_code=404, detail="User not found")
+#     if not verify_password(password, user["password"]):
+#         raise HTTPException(status_code=401, detail="Invalid password")
+#     return {"message": f"Welcome {user['name']}! Login successful."}
+
+
+
+
+
+
+
+
+
 
 # Home screen API
 @app.get("/users")
