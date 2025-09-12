@@ -6,7 +6,6 @@ import bcrypt
 import certifi
 import os
 from dotenv import load_dotenv
-import uvicorn
 
 # Load environment variables
 load_dotenv()
@@ -17,10 +16,10 @@ app = FastAPI()
 MONGO_URI = os.getenv("MONGO_URI")
 if not MONGO_URI:
     raise ValueError("MONGO_URI environment variable not set")
+
 try:
     client = MongoClient(MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=60000)
     client.admin.command("ping")  # Test connection
-    print("Connected to MongoDB successfully!")
 except Exception as e:
     raise ValueError(f"Failed to connect to MongoDB: {str(e)}")
 
@@ -43,7 +42,7 @@ def verify_password(password: str, hashed: str) -> bool:
 @app.get("/")
 def home():
     """Root endpoint to confirm API is running"""
-    return {"message": f"Welcome to the Attendance API! 🚀 ${MONGO_URI}"}
+    return {"message": "Welcome to the Attendance API! 🚀"}
 
 @app.get("/testingDone")
 def test():
@@ -72,7 +71,7 @@ def signup(name: str = Body(...), email: str = Body(...), password: str = Body(.
 
 # Login API
 @app.post("/login")
-def login(email: str, password: str):
+def login(email: str = Body(...), password: str = Body(...)):
     """Login user by verifying email and password"""
     user = users_collection.find_one({"email": email})
     if not user:
@@ -90,7 +89,7 @@ def get_users():
 
 # Mark attendance API
 @app.post("/mark_attendance")
-def mark_attendance(email: str):
+def mark_attendance(email: str = Body(...)):
     """Mark attendance for a logged-in user"""
     user = users_collection.find_one({"email": email})
     if not user:
@@ -124,7 +123,7 @@ def delete_user(email: str):
 
 # Update user name API
 @app.put("/users/{email}")
-def update_user_name(email: str, name: str):
+def update_user_name(email: str, name: str = Body(...)):
     """Update only the user's name"""
     user = users_collection.find_one({"email": email})
     if not user:
@@ -194,6 +193,3 @@ def post_search(name: str):
     if not post:
         raise HTTPException(status_code=404, detail=f"No post found for '{name}'")
     return serialize_doc(post)
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
