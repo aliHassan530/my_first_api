@@ -39,6 +39,7 @@ db = client["attendance_system"]
 users_collection = db["users"]
 attendance_collection = db["attendance"]
 post_collection = db["post"]
+images_collection = db["image_uploads"]     
 
 # Helper functions
 def hash_password(password: str) -> str:
@@ -218,17 +219,16 @@ def getallPost():
         "posts": [serialize_doc(posts) for post in posts]
     }
     
+    
+    
     @app.post("/upload_image")
     async def upload_image(file: UploadFile = File(...)):
         try:
-        # Check if it's an image
             if not file.content_type.startswith("image/"):
                 raise HTTPException(status_code=400, detail="Only image files are allowed")
 
-        # Read image into Pillow
+        # Read and compress image
             image = Image.open(io.BytesIO(await file.read()))
-
-        # Resize / Compress (max 800x800, quality 70)
             image.thumbnail((800, 800))
             compressed_io = io.BytesIO()
             image.save(compressed_io, format="JPEG", optimize=True, quality=70)
@@ -236,12 +236,29 @@ def getallPost():
 
         # Upload to Cloudinary
             result = cloudinary.uploader.upload(compressed_io, folder="uploads")
+            image_url = result["secure_url"]
+
+        # Save to MongoDB
+            images_collection.insert_one({
+            "url": image_url,
+            "uploaded_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
 
             return {
-            "status": "success",
-            "message": "Image uploaded successfully!",
-            "url": result["secure_url"]
+                "status": "success",
+                "message": "Image uploaded and saved to MongoDB!",
+                "url": image_url
             }
 
         except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+@app.get("/images")
+def get_images():
+    """Fetch all uploaded image URLs"""
+    images = list(images_collection.find({}, {"_id": 0}))
+    return {
+        "total_images": len(images),
+        "images": images
+    }
