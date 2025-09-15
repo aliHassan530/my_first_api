@@ -7,7 +7,7 @@ import cloudinary.api
 from pymongo import MongoClient
 import certifi
 from fastapi import FastAPI
-from fastapi import UploadFile, File
+# from fastapi import UploadFile, File
 # Initialize FastAPI app
 app = FastAPI()
 
@@ -69,16 +69,16 @@ except Exception as e:
 async def testing_done():
     return {"message": "Testing Done! 🚀"}
 
-@app.post("/upload_image")
-async def upload_image(file: UploadFile = File(...)):
-    try:
-        # Upload to Cloudinary
-        upload_result = cloudinary.uploader.upload(file.file, folder="attendance_system")
-        image_url = upload_result.get("secure_url")
-        return {"image_url": image_url}
-    except Exception as e:
-        logger.error(f"Image upload failed: {str(e)}")
-        return {"detail": f"Image upload failed: {str(e)}"}
+# @app.post("/upload_image")
+# async def upload_image(file: UploadFile = File(...)):
+#     try:
+#         # Upload to Cloudinary
+#         upload_result = cloudinary.uploader.upload(file.file, folder="attendance_system")
+#         image_url = upload_result.get("secure_url")
+#         return {"image_url": image_url}
+#     except Exception as e:
+#         logger.error(f"Image upload failed: {str(e)}")
+#         return {"detail": f"Image upload failed: {str(e)}"}
 
 # Add your /upload_image, /signup, /post, etc., endpoints here
 # from fastapi import FastAPI, HTTPException, Body, File, UploadFile
