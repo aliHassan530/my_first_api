@@ -202,7 +202,7 @@ def post_search(name: str):
 def getallPost():
     """Get all posts"""
     posts = list(post_collection.find())
-        return {
-        "total_posts": len(posts),
+    return {
+            "total_posts": len(posts),
         "posts": [serialize_doc(posts) for post in posts]
     }
