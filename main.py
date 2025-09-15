@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, UploadFile, File, HTTPException,Body
 from datetime import datetime
 from pydantic import BaseModel
 from pymongo import MongoClient
@@ -6,11 +6,22 @@ import bcrypt
 import certifi
 import os
 from dotenv import load_dotenv
+from PIL import Image
+import cloudinary
+import cloudinary.uploader
+import io
 
 # Load environment variables
 load_dotenv()
 
 app = FastAPI()
+
+
+cloudinary.config(
+    cloud_name=os.getenv("puzzleApp"),
+    api_key=os.getenv("665944475181268"),
+    api_secret=os.getenv("HAbYE1y7-wP1BOcB6aXrsey-Q7M")
+)
 
 # MongoDB connection
 MONGO_URI = os.getenv("MONGO_URI")
@@ -206,3 +217,31 @@ def getallPost():
         "total_posts": len(posts),
         "posts": [serialize_doc(posts) for post in posts]
     }
+    
+    @app.post("/upload_image")
+    async def upload_image(file: UploadFile = File(...)):
+        try:
+        # Check if it's an image
+            if not file.content_type.startswith("image/"):
+                raise HTTPException(status_code=400, detail="Only image files are allowed")
+
+        # Read image into Pillow
+            image = Image.open(io.BytesIO(await file.read()))
+
+        # Resize / Compress (max 800x800, quality 70)
+            image.thumbnail((800, 800))
+            compressed_io = io.BytesIO()
+            image.save(compressed_io, format="JPEG", optimize=True, quality=70)
+            compressed_io.seek(0)
+
+        # Upload to Cloudinary
+            result = cloudinary.uploader.upload(compressed_io, folder="uploads")
+
+            return {
+            "status": "success",
+            "message": "Image uploaded successfully!",
+            "url": result["secure_url"]
+            }
+
+        except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
