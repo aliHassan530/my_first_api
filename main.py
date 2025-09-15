@@ -6,8 +6,6 @@ import bcrypt
 import certifi
 import os
 from dotenv import load_dotenv
-from PIL import Image
-import io
 
 # Load environment variables
 load_dotenv()
@@ -204,8 +202,7 @@ def post_search(name: str):
 def getallPost():
     """Get all posts"""
     posts = list(post_collection.find())
-    return {
+        return {
         "total_posts": len(posts),
         "posts": [serialize_doc(posts) for post in posts]
     }
-    
