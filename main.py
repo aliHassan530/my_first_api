@@ -7,23 +7,37 @@ import certifi
 import os
 from dotenv import load_dotenv
 import cloudinary
-import cloudinary.uploader
+import cloudinary.uploader  # type: ignore
 import cloudinary.api
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
-load_dotenv()
+load_dotenv("/Users/mesum/pathon_project/.env")  # Explicit path for reliability
+
+# Debug environment variables
+logger.debug(f"MONGO_URI: {os.getenv('MONGO_URI')}")
+logger.debug(f"CLOUDINARY_CLOUD_NAME: {os.getenv('CLOUDINARY_CLOUD_NAME')}")
+logger.debug(f"CLOUDINARY_API_KEY: {os.getenv('CLOUDINARY_API_KEY')}")
+logger.debug(f"CLOUDINARY_API_SECRET: {os.getenv('CLOUDINARY_API_SECRET')}")
 
 app = FastAPI()
 
 # MongoDB connection
 MONGO_URI = os.getenv("MONGO_URI")
 if not MONGO_URI:
+    logger.error("MONGO_URI environment variable not set")
     raise ValueError("MONGO_URI environment variable not set")
 
 try:
-    client = MongoClient(MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=60000)
+    client = MongoClient(MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=30000, connectTimeoutMS=30000)
     client.admin.command("ping")  # Test connection
+    logger.info("Successfully connected to MongoDB")
 except Exception as e:
+    logger.error(f"Failed to connect to MongoDB: {str(e)}", exc_info=True)
     raise ValueError(f"Failed to connect to MongoDB: {str(e)}")
 
 # Select database and collections
@@ -33,11 +47,28 @@ attendance_collection = db["attendance"]
 post_collection = db["post"]
 
 # Cloudinary configuration
-cloudinary.config(
-    cloud_name=os.getenv("puzzleApp"),
-    api_key=os.getenv("665944475181268"),
-    api_secret=os.getenv("HAbYE1y7-wP1BOcB6aXrsey-Q7M")
-)
+CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
+CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
+CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
+
+cloudinary_configured = False
+try:
+    if not all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
+        logger.error("One or more Cloudinary environment variables are missing")
+        raise ValueError("Cloudinary environment variables are not set")
+    
+    cloudinary.config(
+        cloud_name=CLOUDINARY_CLOUD_NAME,
+        api_key=CLOUDINARY_API_KEY,
+        api_secret=CLOUDINARY_API_SECRET
+    )
+    # Test Cloudinary connection
+    cloudinary.api.ping()
+    logger.info("Successfully connected to Cloudinary")
+    cloudinary_configured = True
+except Exception as e:
+    logger.error(f"Failed to configure Cloudinary: {str(e)}", exc_info=True)
+    logger.warning("Cloudinary is not configured. Image upload will be disabled.")
 
 # Helper functions
 def hash_password(password: str) -> str:
@@ -77,6 +108,7 @@ def signup(name: str = Body(...), email: str = Body(...), password: str = Body(.
             "user": {"name": name, "email": email}
         }
     except Exception as e:
+        logger.error(f"Signup error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Signup error: {str(e)}")
 
 # Login API
@@ -158,6 +190,7 @@ def userSearch(name: str):
         
         return {"total_users": len(users), "users": users}
     except Exception as e:
+        logger.error(f"Search error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
 # User count API
@@ -174,7 +207,7 @@ def attendance_count():
     count = attendance_collection.count_documents({})
     return {"total_attendance_records": count}
 
-# Updated Post model to include optional image URL
+# Updated Post model
 class PostData(BaseModel):
     name: str
     email: str
@@ -192,23 +225,41 @@ def serialize_doc(doc):
 @app.post("/upload_image")
 async def upload_image(file: UploadFile = File(...)):
     """Upload an image to Cloudinary and return the URL"""
+    if not cloudinary_configured:
+        logger.error("Cloudinary is not configured, cannot upload image")
+        raise HTTPException(status_code=503, detail="Image upload is disabled due to Cloudinary configuration failure")
+    
     try:
+        logger.debug(f"Uploading file: {file.filename}, content_type: {file.content_type}, size: {file.size} bytes")
+        
         # Validate file type
         if not file.content_type.startswith("image/"):
-            raise HTTPException(status_code=400, detail="File must be an image")
+            logger.warning(f"Invalid file type: {file.content_type}")
+            raise HTTPException(status_code=400, detail="File must be an image (e.g., jpg, png)")
+        
+        # Validate file size (max 10MB for Cloudinary free tier)
+        max_size = 10 * 1024 * 1024  # 10MB in bytes
+        if file.size > max_size:
+            logger.warning(f"File too large: {file.size} bytes, max allowed: {max_size} bytes")
+            raise HTTPException(status_code=400, detail="File size exceeds 10MB limit")
         
         # Upload file to Cloudinary
         upload_result = cloudinary.uploader.upload(
             file.file,
-            folder="attendance_system",  # Optional: organize uploads in a folder
+            folder="attendance_system",
             resource_type="image"
         )
+        logger.debug(f"Cloudinary upload response: {upload_result}")
         
         # Get the secure URL of the uploaded image
         image_url = upload_result.get("secure_url")
+        if not image_url:
+            logger.error("Cloudinary did not return a secure URL")
+            raise HTTPException(status_code=500, detail="Failed to retrieve image URL from Cloudinary")
         
         return {"image_url": image_url}
     except Exception as e:
+        logger.error(f"Image upload failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Image upload failed: {str(e)}")
 
 # Updated Create post API
@@ -216,10 +267,12 @@ async def upload_image(file: UploadFile = File(...)):
 def create_post(posting: PostData):
     """Create a new post with optional image URL"""
     try:
+        logger.debug(f"Creating post: {posting.dict()}")
         result = post_collection.insert_one(posting.dict())
         new_post = post_collection.find_one({"_id": result.inserted_id})
         return serialize_doc(new_post)
     except Exception as e:
+        logger.error(f"Post creation failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Post creation failed: {str(e)}")
 
 # Search post API
