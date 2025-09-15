@@ -6,8 +6,9 @@ from pymongo import MongoClient
 import bcrypt, certifi
 from dotenv import load_dotenv
 from PIL import Image
-import cloudinary
-import cloudinary.uploader
+import cloudinary  # type: ignore
+import cloudinary.uploader  # type: ignore
+
 
 # Load environment variables
 load_dotenv()
