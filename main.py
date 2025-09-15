@@ -195,3 +195,11 @@ def post_search(name: str):
     if not post:
         raise HTTPException(status_code=404, detail=f"No post found for '{name}'")
     return serialize_doc(post)
+
+
+
+@app.get("/posts")
+def getallPost():
+    """Get all posts"""
+    posts = list(post_collection.find())
+    return [serialize_doc(post) for post in posts]
