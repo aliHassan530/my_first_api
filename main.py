@@ -1,11 +1,12 @@
-from fastapi import FastAPI, HTTPException, Body
-from datetime import datetime
-from pydantic import BaseModel
-from pymongo import MongoClient
-import bcrypt
-import certifi
 import os
+import logging
 from dotenv import load_dotenv
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
+from pymongo import MongoClient
+import certifi
+from fastapi import FastAPI
 # from fastapi import UploadFile, File
 # Initialize FastAPI app
 app = FastAPI()
