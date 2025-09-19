@@ -375,6 +375,7 @@
 #         "total_posts": len(posts),
 #         "posts": [serialize_doc(post) for post in posts]
 #     }
+
 from fastapi import FastAPI, HTTPException, Body, File, UploadFile
 from datetime import datetime
 from pydantic import BaseModel
@@ -386,6 +387,11 @@ from dotenv import load_dotenv
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -395,12 +401,15 @@ app = FastAPI()
 # MongoDB connection
 MONGO_URI = os.getenv("MONGO_URI")
 if not MONGO_URI:
+    logger.error("MONGO_URI environment variable not set")
     raise ValueError("MONGO_URI environment variable not set")
 
 try:
-    client = MongoClient(MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=60000)
-    client.admin.command("ping")  # Test connection
+    client = MongoClient(MONGO_URI, tlsCAFile=certifi.where(), serverSelectionTimeoutMS=100000)
+    client.admin.command("ping")
+    logger.info("MongoDB connection successful")
 except Exception as e:
+    logger.error(f"Failed to connect to MongoDB: {str(e)}")
     raise ValueError(f"Failed to connect to MongoDB: {str(e)}")
 
 # Select database and collections
@@ -409,9 +418,9 @@ users_collection = db["users"]
 attendance_collection = db["attendance"]
 post_collection = db["post"]
 
-# Cloudinary configuration (CLOUDINARY_URL is automatically loaded by SDK)
-
+# Cloudinary configuration
 if not os.getenv("CLOUDINARY_URL"):
+    logger.error("CLOUDINARY_URL environment variable not set")
     raise ValueError("CLOUDINARY_URL environment variable not set")
 
 # Helper functions
@@ -423,28 +432,55 @@ def verify_password(password: str, hashed: str) -> bool:
     """Verify the entered password with stored hash"""
     return bcrypt.checkpw(password.encode('utf-8'), hashed.encode())
 
+# Test connections endpoint
+@app.get("/test_connections")
+async def test_connections():
+    """Test MongoDB and Cloudinary connectivity"""
+    try:
+        # Test MongoDB
+        client.admin.command("ping")
+        mongo_status = "MongoDB connection successful"
+    except Exception as e:
+        mongo_status = f"MongoDB connection failed: {str(e)}"
+        logger.error(mongo_status)
+
+    try:
+        # Test Cloudinary
+        cloudinary.api.ping()
+        cloudinary_status = "Cloudinary connection successful"
+    except Exception as e:
+        cloudinary_status = f"Cloudinary connection failed: {str(e)}"
+        logger.error(cloudinary_status)
+
+    return {
+        "mongo_status": mongo_status,
+        "cloudinary_status": cloudinary_status
+    }
+
 # Root route
 @app.get("/")
-def home():
+async def home():
     """Root endpoint to confirm API is running"""
     return {"message": "Welcome to the Attendance API! 🚀"}
 
 @app.get("/testingDone")
-def test():
+async def test():
     """Test endpoint to confirm API is running"""
     return {"message": "Testing Done! 🚀"}
 
 # Signup API
 @app.post("/signup")
-def signup(name: str = Body(...), email: str = Body(...), password: str = Body(...)):
+async def signup(name: str = Body(...), email: str = Body(...), password: str = Body(...)):
     """Register a new user with hashed password"""
     try:
         if users_collection.find_one({"email": email}):
+            logger.warning(f"Signup attempt: User already exists with email {email}")
             raise HTTPException(status_code=400, detail="User already exists")
         
         hashed_password = hash_password(password)
         new_user = {"name": name, "email": email, "password": hashed_password}
         users_collection.insert_one(new_user)
+        logger.info(f"User registered: {email}")
         
         return {
             "status": "success",
@@ -452,102 +488,149 @@ def signup(name: str = Body(...), email: str = Body(...), password: str = Body(.
             "user": {"name": name, "email": email}
         }
     except Exception as e:
+        logger.error(f"Signup error for {email}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Signup error: {str(e)}")
 
 # Login API
 @app.post("/login")
-def login(email: str = Body(...), password: str = Body(...)):
+async def login(email: str = Body(...), password: str = Body(...)):
     """Login user by verifying email and password"""
-    user = users_collection.find_one({"email": email})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if not verify_password(password, user["password"]):
-        raise HTTPException(status_code=401, detail="Invalid password")
-    return {"message": f"Welcome {user['name']}! Login successful."}
+    try:
+        user = users_collection.find_one({"email": email})
+        if not user:
+            logger.warning(f"Login attempt: User not found for email {email}")
+            raise HTTPException(status_code=404, detail="User not found")
+        if not verify_password(password, user["password"]):
+            logger.warning(f"Login attempt: Invalid password for {email}")
+            raise HTTPException(status_code=401, detail="Invalid password")
+        logger.info(f"Login successful for {email}")
+        return {"message": f"Welcome {user['name']}! Login successful."}
+    except Exception as e:
+        logger.error(f"Login error for {email}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Login error: {str(e)}")
 
 # Home screen API
 @app.get("/users")
-def get_users():
+async def get_users():
     """Show all registered users (Home Screen)"""
-    users = list(users_collection.find({}, {"_id": 0, "password": 0}))
-    return {"total_users": len(users), "users": users}
+    try:
+        users = list(users_collection.find({}, {"_id": 0, "password": 0}))
+        logger.info(f"Fetched {len(users)} users")
+        return {"total_users": len(users), "users": users}
+    except Exception as e:
+        logger.error(f"Get users error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching users: {str(e)}")
 
 # Mark attendance API
 @app.post("/mark_attendance")
-def mark_attendance(email: str = Body(...)):
+async def mark_attendance(email: str = Body(...)):
     """Mark attendance for a logged-in user"""
-    user = users_collection.find_one({"email": email})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    record = {
-        "email": email,
-        "name": user["name"],
-        "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    attendance_collection.insert_one(record)
-    return {"message": f"Attendance marked for {user['name']}", "time": record["time"]}
+    try:
+        user = users_collection.find_one({"email": email})
+        if not user:
+            logger.warning(f"Mark attendance: User not found for {email}")
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        record = {
+            "email": email,
+            "name": user["name"],
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        attendance_collection.insert_one(record)
+        logger.info(f"Attendance marked for {email}")
+        return {"message": f"Attendance marked for {user['name']}", "time": record["time"]}
+    except Exception as e:
+        logger.error(f"Mark attendance error for {email}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Attendance error: {str(e)}")
 
 # View attendance API
 @app.get("/attendance/{email}")
-def view_user_attendance(email: str):
+async def view_user_attendance(email: str):
     """View attendance records for a specific user by email"""
-    records = list(attendance_collection.find({"email": email}, {"_id": 0}))
-    if not records:
-        raise HTTPException(status_code=404, detail=f"No attendance found for {email}")
-    return {"total_records": len(records), "attendance": records}
+    try:
+        records = list(attendance_collection.find({"email": email}, {"_id": 0}))
+        if not records:
+            logger.warning(f"No attendance found for {email}")
+            raise HTTPException(status_code=404, detail=f"No attendance found for {email}")
+        logger.info(f"Fetched {len(records)} attendance records for {email}")
+        return {"total_records": len(records), "attendance": records}
+    except Exception as e:
+        logger.error(f"View attendance error for {email}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching attendance: {str(e)}")
 
 # Delete user API
 @app.delete("/users/{email}")
-def delete_user(email: str):
+async def delete_user(email: str):
     """Delete a user by email"""
-    result = users_collection.delete_one({"email": email})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
-    return {"message": f"User '{email}' deleted successfully"}
+    try:
+        result = users_collection.delete_one({"email": email})
+        if result.deleted_count == 0:
+            logger.warning(f"Delete user: User not found for {email}")
+            raise HTTPException(status_code=404, detail="User not found")
+        logger.info(f"User deleted: {email}")
+        return {"message": f"User '{email}' deleted successfully"}
+    except Exception as e:
+        logger.error(f"Delete user error for {email}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Delete error: {str(e)}")
 
 # Update user name API
 @app.put("/users/{email}")
-def update_user_name(email: str, name: str = Body(...)):
+async def update_user_name(email: str, name: str = Body(...)):
     """Update only the user's name"""
-    user = users_collection.find_one({"email": email})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    result = users_collection.update_one({"email": email}, {"$set": {"name": name}})
-    if result.modified_count == 0:
-        return {"message": "Name is already the same, nothing changed"}
-    return {"message": f"User '{email}' name updated to '{name}'"}
+    try:
+        user = users_collection.find_one({"email": email})
+        if not user:
+            logger.warning(f"Update user: User not found for {email}")
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        result = users_collection.update_one({"email": email}, {"$set": {"name": name}})
+        if result.modified_count == 0:
+            logger.info(f"Update user: Name unchanged for {email}")
+            return {"message": "Name is already the same, nothing changed"}
+        logger.info(f"User name updated for {email} to {name}")
+        return {"message": f"User '{email}' name updated to '{name}'"}
+    except Exception as e:
+        logger.error(f"Update user error for {email}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Update error: {str(e)}")
 
 # Filter user name API
 @app.get("/users/filter/{name}")
-def userSearch(name: str):
-    """
-    🔍 Search users by name (case-insensitive)
-    """
+async def userSearch(name: str):
+    """Search users by name (case-insensitive)"""
     try:
         users = list(users_collection.find({"name": {"$regex": name, "$options": "i"}}, {"_id": 0, "password": 0}))
-        
         if not users:
+            logger.warning(f"No users found with name containing '{name}'")
             raise HTTPException(status_code=404, detail=f"No users found with name containing '{name}'")
-        
+        logger.info(f"Found {len(users)} users for name filter '{name}'")
         return {"total_users": len(users), "users": users}
     except Exception as e:
+        logger.error(f"Search error for name '{name}': {str(e)}")
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
 # User count API
 @app.get("/users/count")
-def user_count():
+async def user_count():
     """Get total number of registered users"""
-    count = users_collection.count_documents({})
-    return {"total_users": count}
+    try:
+        count = users_collection.count_documents({})
+        logger.info(f"Total users: {count}")
+        return {"total_users": count}
+    except Exception as e:
+        logger.error(f"User count error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Count error: {str(e)}")
 
 # Attendance count API
 @app.get("/attendance/count")
-def attendance_count():
+async def attendance_count():
     """Get total number of attendance records"""
-    count = attendance_collection.count_documents({})
-    return {"total_attendance_records": count}
+    try:
+        count = attendance_collection.count_documents({})
+        logger.info(f"Total attendance records: {count}")
+        return {"total_attendance_records": count}
+    except Exception as e:
+        logger.error(f"Attendance count error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Count error: {str(e)}")
 
 # Post model
 class PostData(BaseModel):
@@ -564,58 +647,79 @@ def serialize_doc(doc):
 
 # Create post API
 @app.post("/post")
-def post(posting: PostData):
+async def post(posting: PostData):
     """Create a new post"""
-    result = post_collection.insert_one(posting.dict())
-    new_post = post_collection.find_one({"_id": result.inserted_id})
-    return serialize_doc(new_post)
+    try:
+        result = post_collection.insert_one(posting.dict())
+        new_post = post_collection.find_one({"_id": result.inserted_id})
+        logger.info(f"Post created for {posting.email}")
+        return serialize_doc(new_post)
+    except Exception as e:
+        logger.error(f"Post creation error for {posting.email}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Post error: {str(e)}")
 
 # Search post API
 @app.get("/post/{name}")
-def post_search(name: str):
+async def post_search(name: str):
     """Search post by name"""
-    post = post_collection.find_one({"name": name})
-    if not post:
-        raise HTTPException(status_code=404, detail=f"No post found for '{name}'")
-    return serialize_doc(post)
+    try:
+        post = post_collection.find_one({"name": name})
+        if not post:
+            logger.warning(f"No post found for name '{name}'")
+            raise HTTPException(status_code=404, detail=f"No post found for '{name}'")
+        logger.info(f"Post found for name '{name}'")
+        return serialize_doc(post)
+    except Exception as e:
+        logger.error(f"Post search error for name '{name}': {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
 # Get all posts API
 @app.get("/posts")
-def getallPost():
+async def getallPost():
     """Get all posts"""
-    posts = list(post_collection.find())
-    return {
-        "total_posts": len(posts),
-        "posts": [serialize_doc(post) for post in posts]
-    }
+    try:
+        posts = list(post_collection.find())
+        logger.info(f"Fetched {len(posts)} posts")
+        return {
+            "total_posts": len(posts),
+            "posts": [serialize_doc(post) for post in posts]
+        }
+    except Exception as e:
+        logger.error(f"Get posts error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Posts error: {str(e)}")
 
 # Image upload API
 @app.post("/upload_image")
 async def upload_image(email: str = Body(...), file: UploadFile = File(...)):
     """Upload an image to Cloudinary for a user"""
     try:
+        logger.info(f"Starting image upload for {email}")
         # Verify user exists
         user = users_collection.find_one({"email": email})
         if not user:
+            logger.warning(f"Upload image: User not found for {email}")
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Validate file type and size (Vercel limit: ~4.5MB for functions)
+        # Validate file type and size
         allowed_types = ["image/jpeg", "image/png", "image/gif"]
         if file.content_type not in allowed_types:
+            logger.warning(f"Upload image: Invalid file type {file.content_type} for {email}")
             raise HTTPException(status_code=400, detail="Invalid file type. Only JPEG, PNG, and GIF are allowed.")
         
-        # Read file content as bytes (better for serverless)
         contents = await file.read()
-        if len(contents) > 5 * 1024 * 1024:  # 5MB limit
-            raise HTTPException(status_code=400, detail="File too large. Max 5MB.")
+        if len(contents) > 2 * 1024 * 1024:  # Reduced to 2MB for Vercel
+            logger.warning(f"Upload image: File too large for {email}")
+            raise HTTPException(status_code=400, detail="File too large. Max 2MB.")
 
-        # Upload to Cloudinary using bytes
+        # Upload to Cloudinary
+        logger.info(f"Uploading image to Cloudinary for {email}")
         upload_result = cloudinary.uploader.upload(
             contents,
             folder="attendance_system",
             public_id=f"{email}_{datetime.now().strftime('%Y%m%d%H%M%S')}",
             resource_type="image",
-            format=file.content_type.split('/')[-1]
+            format=file.content_type.split('/')[-1],
+            timeout=30
         )
 
         # Store image metadata in MongoDB
@@ -627,6 +731,7 @@ async def upload_image(email: str = Body(...), file: UploadFile = File(...)):
             "upload_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         db["images"].insert_one(image_record)
+        logger.info(f"Image uploaded and stored for {email}")
 
         return {
             "message": f"Image uploaded successfully for {user['name']}",
@@ -634,7 +739,7 @@ async def upload_image(email: str = Body(...), file: UploadFile = File(...)):
             "upload_time": image_record["upload_time"]
         }
     except Exception as e:
-        print(f"Upload error details: {str(e)}")  # For Vercel logs
+        logger.error(f"Image upload error for {email}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Image upload error: {str(e)}")
 
 # from fastapi import FastAPI, HTTPException, Body
