@@ -375,7 +375,6 @@
 #         "total_posts": len(posts),
 #         "posts": [serialize_doc(post) for post in posts]
 #     }
-
 from fastapi import FastAPI, HTTPException, Body, File, UploadFile
 from datetime import datetime
 from pydantic import BaseModel
@@ -410,19 +409,9 @@ users_collection = db["users"]
 attendance_collection = db["attendance"]
 post_collection = db["post"]
 
-# Cloudinary configuration
-CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
-CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
-CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
-
-if not all([CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET]):
-    raise ValueError("Cloudinary environment variables not set")
-
-cloudinary.config(
-    cloud_name=CLOUDINARY_CLOUD_NAME,
-    api_key=CLOUDINARY_API_KEY,
-    api_secret=CLOUDINARY_API_SECRET
-)
+# Cloudinary configuration (CLOUDINARY_URL is automatically loaded by SDK)
+if not os.getenv("CLOUDINARY_URL"):
+    raise ValueError("CLOUDINARY_URL environment variable not set")
 
 # Helper functions
 def hash_password(password: str) -> str:
@@ -609,17 +598,23 @@ async def upload_image(email: str = Body(...), file: UploadFile = File(...)):
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        # Validate file type
+        # Validate file type and size (Vercel limit: ~4.5MB for functions)
         allowed_types = ["image/jpeg", "image/png", "image/gif"]
         if file.content_type not in allowed_types:
             raise HTTPException(status_code=400, detail="Invalid file type. Only JPEG, PNG, and GIF are allowed.")
+        
+        # Read file content as bytes (better for serverless)
+        contents = await file.read()
+        if len(contents) > 5 * 1024 * 1024:  # 5MB limit
+            raise HTTPException(status_code=400, detail="File too large. Max 5MB.")
 
-        # Upload to Cloudinary
+        # Upload to Cloudinary using bytes
         upload_result = cloudinary.uploader.upload(
-            file.file,
+            contents,
             folder="attendance_system",
             public_id=f"{email}_{datetime.now().strftime('%Y%m%d%H%M%S')}",
-            resource_type="image"
+            resource_type="image",
+            format=file.content_type.split('/')[-1]
         )
 
         # Store image metadata in MongoDB
@@ -638,6 +633,7 @@ async def upload_image(email: str = Body(...), file: UploadFile = File(...)):
             "upload_time": image_record["upload_time"]
         }
     except Exception as e:
+        print(f"Upload error details: {str(e)}")  # For Vercel logs
         raise HTTPException(status_code=500, detail=f"Image upload error: {str(e)}")
 
 # from fastapi import FastAPI, HTTPException, Body
