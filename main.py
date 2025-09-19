@@ -410,6 +410,7 @@ attendance_collection = db["attendance"]
 post_collection = db["post"]
 
 # Cloudinary configuration (CLOUDINARY_URL is automatically loaded by SDK)
+
 if not os.getenv("CLOUDINARY_URL"):
     raise ValueError("CLOUDINARY_URL environment variable not set")
 
